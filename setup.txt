@@ -1,0 +1,107 @@
+sudo apt update
+sudo apt-get install python3-pip git-core virtualenv redis-server telnet nginx
+
+Start redis serve :
+	sudo systemctl start redis-server
+	sudo systemctl enable redis-server
+
+Clone the project
+Activate virtual environment
+Install requirements (Make sure that prod.txt has gunicorn package)
+
+Change settings :
+	Provide static folder path in static_root
+	Change allowed host to "*"
+	Change setting file in gunicorn.py
+	
+Change environment file:
+	Change database config :
+		DB name
+		DB host ( Use private IP of SQL instance )
+		DB user
+		DB password
+	CELERY_BROKER_URL = 'redis://localhost:6379/0'
+	CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+	Debug=False
+
+Export firewall port of database instance
+Make sure both have a same VPC.
+	ping 10.72.112.3
+	telnet 10.72.112.3 5432
+
+Setup nginx :
+
+	sudo nano /etc/nginx/sites-available/project
+		server {
+		    listen 80;
+		    server_name your-vm-external-ip;
+
+		    location = /favicon.ico { access_log off; log_not_found off; }
+		    location /static/ {
+		        root /home/your-username/project;
+		    }
+
+		    location / {
+		        include proxy_params;
+		        proxy_pass http://unix:/home/your-username/myproject.sock;
+		    }
+		}
+	sudo ln -s /etc/nginx/sites-available/project /etc/nginx/sites-enabled
+
+	sudo nginx -t
+
+Setup gunicorn :
+	sudo nano /etc/systemd/system/gunicorn.service
+		[Unit]
+		Description=gunicorn daemon for project
+		After=network.target
+
+		[Service]
+		User=your-username
+		Group=www-data
+		WorkingDirectory=/home/your-username/project
+		ExecStart=/home/your-username/venv/bin/gunicorn --workers 3 --bind unix:/home/your-username/project/project.sock project.wsgi:application
+
+		[Install]
+		WantedBy=multi-user.target
+
+
+Setup celery :
+	sudo nano /etc/systemd/system/celery.service
+		[Unit]
+		Description=Celery Service
+		After=network.target
+
+		[Service]
+		Type=forking
+		User=your-username
+		Group=www-data
+		WorkingDirectory=/home/your-username/project
+		ExecStart=/home/your-username/venv/bin/celery -A project worker --loglevel=info --detach
+		ExecStop=/home/your-username/venv/bin/celery -A project control shutdown
+		ExecReload=/bin/kill -s HUP $MAINPID
+
+		[Install]
+		WantedBy=multi-user.target
+
+
+Run deploy.sh :
+
+python manage.py collectstatic
+python manage.py seed
+
+sudo systemctl daemon-reload
+
+sudo systemctl restart nginx
+sudo systemctl start gunicorn
+sudo systemctl enable gunicorn
+
+sudo systemctl daemon-reload
+sudo systemctl start celery
+sudo systemctl enable celery
+
+
+
+
+# For status
+sudo journalctl -u gunicorn
