@@ -1,7 +1,7 @@
 sudo apt update
-sudo apt-get install python3-pip git-core virtualenv redis-server telnet nginx
+sudo apt-get install python3-pip python3-dev git-core virtualenv redis-server default-libmysqlclient-dev build-essential pkg-config telnet nginx
 
-Start redis serve :
+Start redis server :
 	sudo systemctl start redis-server
 	sudo systemctl enable redis-server
 
